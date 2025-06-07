@@ -95,7 +95,7 @@
         .main-app-content {
             background-color: white;
             border-radius: 1rem; /* Rounded corners */
-            padding: 1.5rem; /* p-6 */
+            padding: 1rem; /* Adjusted from 1.5rem to 1rem for tighter mobile fit */
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); /* Soft shadow */
             border: 1px solid #e2e8f0; /* Subtle border */
             /* No max-height or overflow: hidden here, allows main content to expand */
@@ -108,7 +108,7 @@
             padding: 1.5rem; /* p-6 */
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); /* Soft shadow */
             border: 1px solid #e2e8f0; /* Subtle border */
-            max-height: 500px; /* Max height for individual chart cards */
+            max-height: 400px; /* Adjusted max-height for individual chart cards to 400px */
             overflow: hidden; /* Hide content that exceeds max-height within the card */
             display: flex;
             flex-direction: column;
@@ -134,7 +134,7 @@
         </div>
 
         <div class="text-center mb-8">
-            <h1 class="text-4xl sm:text-5xl font-extrabold text-[#34495E] leading-tight">Dashboard de Resultados de Votación</h1>
+            <h1 class="text-4xl sm:text-5xl font-extrabold text-[#34495E] leading-tight">Panel de Resultados</h1>
             <p class="mt-4 text-lg text-slate-600">Visualización en tiempo real de los votos emitidos.</p>
         </div>
 
@@ -254,7 +254,7 @@
 
             // Find or create the parent .chart-card-item
             let chartCard = chartsContainer.querySelector(`.chart-card-item[data-position="${position}"]`);
-            let totalVotesDisplay; // Declare this outside the if/else to be accessible later
+            let totalVotesDisplay; // Declare this here to be accessible later
 
             if (!chartCard) { // If card section doesn't exist, create it and its canvas
                 chartCard = document.createElement('div');
@@ -374,16 +374,14 @@
             }
 
             loader.classList.remove('hidden');
-            // No limpiar chartsContainer.innerHTML = ''; aquí para permitir actualizaciones suaves
             try {
                 // Get all documents from the user_votes collection
                 const votesCollectionRef = collection(db, `artifacts/${FB_APP_ID}/public/data/user_votes`);
-                const querySnapshot = await getDocs(query(votesCollectionRef)); // Use query to get all documents
+                const querySnapshot = await getDocs(query(votesCollectionRef));
 
                 const aggregatedResults = {};
 
                 // Ensure all expected positions and their candidates are initialized to 0 votes
-                // This ensures all charts are created even if no votes
                 electionData.forEach(positionData => {
                     aggregatedResults[positionData.position] = {};
                     positionData.candidates.forEach(candidate => {
@@ -404,7 +402,6 @@
                 });
 
                 // Render charts for each expected position, even if no votes yet
-                // CRUCIAL: Do NOT skip if all votes are 0, just render an empty chart
                 electionData.forEach(positionData => {
                     renderChart(positionData.position, aggregatedResults[positionData.position] || {});
                 });
@@ -415,18 +412,16 @@
                 );
                 const noVotesMessageElement = chartsContainer.querySelector('p.text-center');
 
-                if (!hasAnyVotes && Object.keys(chartInstances).length === 0) { // Only show message if truly no votes and no charts created yet
-                    if (!noVotesMessageElement) { // Prevent duplicate message
+                if (!hasAnyVotes && Object.keys(chartInstances).length === 0) {
+                    if (!noVotesMessageElement) {
                         chartsContainer.innerHTML = '<p class="text-center text-slate-600 mt-4">Aún no hay votos registrados.</p>';
                     }
                 } else if (hasAnyVotes && noVotesMessageElement) {
-                    // Remove "No votes yet" message if votes start coming in
                     noVotesMessageElement.remove();
                 }
 
             } catch (error) {
                 console.error("Error fetching or rendering results:", error);
-                // Solo mostrar mensaje de error si no hay gráficos existentes
                 if (Object.keys(chartInstances).length === 0) {
                     chartsContainer.innerHTML = '<p class="text-red-600 text-center">Error al cargar los resultados. Intente refrescar.</p>';
                 }
@@ -489,9 +484,6 @@
                 loader.classList.add('hidden');
             }
         };
-
-        // Event Handlers
-        // refreshResultsBtn.addEventListener('click', fetchAndRenderResults); // This listener is no longer needed
 
         // Initialize Firebase when the DOM is fully loaded
         document.addEventListener('DOMContentLoaded', initFirebase);
