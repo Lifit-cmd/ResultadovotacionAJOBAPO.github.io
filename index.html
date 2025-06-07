@@ -19,6 +19,7 @@
         body {
             font-family: 'Inter', sans-serif;
             overflow-x: hidden; /* Prevent horizontal scroll due to diagonal elements */
+            padding: 0.5rem; /* Adjusted default padding for smaller screens */
         }
         .view {
             display: none;
@@ -95,11 +96,23 @@
         .main-app-content {
             background-color: white;
             border-radius: 1rem; /* Rounded corners */
-            padding: 1rem; /* Adjusted from 1.5rem to 1rem for tighter mobile fit */
+            padding: 0.5rem; /* Adjusted from 1rem to 0.5rem for tighter mobile fit */
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); /* Soft shadow */
             border: 1px solid #e2e8f0; /* Subtle border */
             /* No max-height or overflow: hidden here, allows main content to expand */
         }
+        /* Responsive padding for main-app-content */
+        @media (min-width: 640px) { /* sm breakpoint */
+            .main-app-content {
+                padding: 1rem; /* Revert to 1rem for small screens and up */
+            }
+        }
+        @media (min-width: 768px) { /* md breakpoint */
+            .main-app-content {
+                padding: 1.5rem; /* Revert to 1.5rem for medium screens and up */
+            }
+        }
+
 
         /* Styles specifically for individual chart cards */
         .chart-card-item {
