@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard de Resultados de Votación</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!--
+        Chosen Palette: "AJOBAPO Vibrante" - consistent with the voting application, using warm, dynamic tones.
+        Application Structure Plan: A single-page application (SPA) designed exclusively for viewing aggregated voting results. It features a central dashboard layout to display multiple bar charts, each representing a voting position, now with a diagonal background and card-based sections for consistency with the voting app. The structure prioritizes real-time consumption of vote counts using Firebase Firestore's onSnapshot listener. Chart.js visualizes the data with smooth animations.
+        Visualization & Content Choices: Aggregated voting results are presented using dynamic bar charts (Chart.js) for each position. Bar charts are chosen for clear comparison of candidate votes within each category. The charts are placed within responsive card containers to ensure optimal display across devices. The dashboard now updates automatically in real-time. No SVG or Mermaid diagrams are used; all visuals are handled via HTML/CSS/JS or Chart.js canvas.
+        CONFIRMATION: NO SVG graphics used. NO Mermaid JS used.
+    -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            overflow-x: hidden; /* Prevent horizontal scroll due to diagonal elements */
+        }
+        .view {
+            display: none;
+        }
+        .view.active {
+            display: block;
+        }
+        /* Styles for loader indicator */
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #E74C3C; /* Vibrant Red for loader top border */
+            border-radius: 50%;
+            width: 28px; /* Slightly larger loader */
+            height: 28px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Button hover/focus effects using AJOBAPO palette */
+        .btn-primary {
+            background-color: #E74C3C; /* Vibrant Red */
+            color: white;
+            font-weight: 700;
+            padding: 0.75rem 1.5rem; /* py-3 px-6 */
+            border-radius: 0.5rem; /* rounded-lg */
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(231, 76, 60, 0.3); /* Shadow based on Vibrant Red */
+        }
+        .btn-primary:hover {
+            background-color: #F39C12; /* Warm Orange on hover */
+            transform: translateY(-2px); /* Slight lift */
+            box-shadow: 0 6px 16px rgba(243, 156, 18, 0.4); /* Shadow based on Warm Orange */
+        }
+        .btn-primary:focus {
+            outline: none;
+            box-shadow: 0 0 0 4px rgba(243, 156, 18, 0.5); /* Focus ring based on Warm Orange */
+        }
+        .btn-primary:disabled {
+            background-color: #cbd5e1; /* Slate 300 - lighter neutral */
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        /* --- Diagonal Design Styles (consistent with voting app) --- */
+        .diagonal-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #F5B7B1 40%, #F9D9C9 100%); /* Diagonal gradient from AJOBAPO palette */
+            transform-origin: top left;
+            z-index: -1; /* Send to background */
+            pointer-events: none; /* Allow clicks through */
+        }
+        
+        .diagonal-layer-2 {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, rgba(255,255,255,0.1) 40%, transparent 100%); /* Subtle white overlay */
+            transform-origin: top left;
+            z-index: -2; /* Even further back */
+            pointer-events: none;
+        }
+
+        /* New class for the main application container */
+        .main-app-content {
+            background-color: white;
+            border-radius: 1rem; /* Rounded corners */
+            padding: 1.5rem; /* p-6 */
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); /* Soft shadow */
+            border: 1px solid #e2e8f0; /* Subtle border */
+            /* No max-height or overflow: hidden here, allows main content to expand */
+        }
+
+        /* Styles specifically for individual chart cards */
+        .chart-card-item {
+            background-color: white; /* Ensure consistent background, though not strictly needed here */
+            border-radius: 1rem; /* Rounded corners */
+            padding: 1.5rem; /* p-6 */
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); /* Soft shadow */
+            border: 1px solid #e2e8f0; /* Subtle border */
+            max-height: 500px; /* Max height for individual chart cards */
+            overflow: hidden; /* Hide content that exceeds max-height within the card */
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Ensure canvas within chart-card-item has a minimum height and fills available space */
+        .chart-card-item canvas {
+            min-height: 250px; /* Minimum height for the chart drawing area */
+            flex-grow: 1; /* Allows canvas to expand within its flex container */
+            width: 100%; /* Ensure canvas takes full width of its parent */
+        }
+    </style>
+</head>
+<body class="text-[#34495E] flex flex-col items-center justify-start min-h-screen p-4 relative">
+    <!-- Diagonal Background Layer -->
+    <div class="diagonal-bg"></div>
+    <!-- Optional Second Diagonal Layer for subtle depth -->
+    <div class="diagonal-layer-2"></div>
+
+    <main id="app-container" class="w-full max-w-4xl mx-auto main-app-content"> <!-- Changed class here -->
+        <div id="loader" class="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center rounded-2xl hidden z-10">
+            <div class="loader"></div>
+        </div>
+
+        <div class="text-center mb-8">
+            <h1 class="text-4xl sm:text-5xl font-extrabold text-[#34495E] leading-tight">Dashboard de Resultados de Votación</h1>
+            <p class="mt-4 text-lg text-slate-600">Visualización en tiempo real de los votos emitidos.</p>
+        </div>
+
+        <div id="charts-container" class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
+            <!-- Los gráficos se renderizarán aquí dinámicamente -->
+        </div>
+
+    </main>
+
+    <script type="module">
+        // Import Firebase modules
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, query, onSnapshot, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global variables for Firebase configuration
+        let FB_APP_ID; // This will hold the projectId for Firestore path
+        let FB_CONFIG_DATA;
+        let FB_AUTH_TOKEN;
+
+        // Determine if running in Canvas environment or locally
+        if (typeof __app_id !== 'undefined' && typeof __firebase_config !== 'undefined' && typeof __initial_auth_token !== 'undefined') {
+            FB_APP_ID = __app_id; // Use Canvas's appId
+            FB_CONFIG_DATA = JSON.parse(__firebase_config);
+            FB_AUTH_TOKEN = __initial_auth_token;
+            console.log("Running in Canvas environment.");
+        } else {
+            // Hardcoded configuration for local testing (REPLACE WITH YOUR REAL FIREBASE CONFIG)
+            console.warn("Canvas variables not found. Using hardcoded Firebase config for local testing.");
+            FB_CONFIG_DATA = {
+                apiKey: "AIzaSyC-_hmFmOF86OjjKmgpaBqze0-zy6-boEg", // TU API KEY (De tu Firebase Project)
+                authDomain: "votaciones-de-ajobapo.firebaseapp.com",
+                projectId: "votaciones-de-ajobapo", // TU PROJECT ID (De tu Firebase Project)
+                storageBucket: "votaciones-de-ajobapo.firebasestorage.app",
+                messagingSenderId: "302058837199",
+                appId: "1:302058837199:web:03c2d27947dc9e159093ba",
+                measurementId: "G-4H0BFKG88E" // Optional: if you have Google Analytics for Firebase
+            };
+            FB_APP_ID = FB_CONFIG_DATA.projectId; // Set appId to project ID for consistency with Firestore path
+            FB_AUTH_TOKEN = null; // No custom token for local anonymous sign-in
+        }
+
+        // Firebase initialization variables
+        let app;
+        let db;
+        let auth;
+        let isAuthReady = false; // Flag to ensure Firebase is initialized and authenticated
+
+        // DOM elements
+        const chartsContainer = document.getElementById('charts-container');
+        const loader = document.getElementById('loader');
+
+        // Chart instances storage
+        const chartInstances = {};
+
+        // Election data (must match the voting app's positions for consistent chart generation)
+        const electionData = [
+            {
+                position: 'Presidente',
+                candidates: ['Idris Santana', 'Voto en Blanco']
+            },
+            {
+                position: 'Vicepresidente',
+                candidates: ['Mercedes Fernández', 'Diana Barrientos']
+            },
+            {
+                position: 'Secretaría',
+                candidates: ['Mercedes Fernández', 'Voto en Blanco']
+            },
+            {
+                position: 'Coordinador de Publicidad y Redes',
+                candidates: ['Ana Sofía Santos', 'Aarón López']
+            },
+            {
+                position: 'Coordinador de Instrucción y Crecimiento',
+                candidates: ['Juan Aparicio', 'Voto en Blanco']
+            },
+            {
+                position: 'Coordiandor de Arte, Cultura y Deportes',
+                candidates: ['Jafet López', 'Voto en Blanco']
+            },
+            {
+                position: 'Coordinador de Visitas y Conexiones',
+                candidates: ['Masai Guevara', 'Voto en Blanco']
+            },
+        ];
+
+        // --- Paleta de colores AJOBAPO para gráficos ---
+        const AJOBAPO_COLORS = {
+            primary: '#E74C3C', // Rojo Vibrante
+            secondary: '#F39C12', // Naranja Cálido
+            tertiary: '#F5B7B1', // Rosado Suave
+            lightYellow: '#F9D9C9', // Durazno Suave
+            paleYellow: '#FDF5E6', // Amarillo Pálido
+            darkText: '#34495E', // Gris Oscuro Suave
+            // Puedes añadir más tonos si Chart.js necesita más colores únicos
+            chartBackgrounds: [
+                'rgba(231, 76, 60, 0.7)', // Rojo Vibrante con transparencia
+                'rgba(243, 156, 18, 0.7)', // Naranja Cálido con transparencia
+                'rgba(52, 73, 94, 0.7)',  // Gris Oscuro Suave con transparencia
+                'rgba(245, 183, 177, 0.7)', // Rosado Suave con transparencia
+                'rgba(249, 217, 201, 0.7)', // Durazno Suave con transparencia
+            ],
+            chartBorders: [
+                '#E74C3C', // Rojo Vibrante
+                '#F39C12', // Naranja Cálido
+                '#34495E',  // Gris Oscuro Suave
+                '#F5B7B1', // Rosado Suave
+                '#F9D9C9', // Durazno Suave
+            ]
+        };
+
+        // Function to create or update charts
+        const renderChart = (position, data) => {
+            const canvasId = `chart-${position.replace(/\s+/g, '-')}`;
+            let chartCanvas = document.getElementById(canvasId);
+
+            // Find or create the parent .chart-card-item
+            let chartCard = chartsContainer.querySelector(`.chart-card-item[data-position="${position}"]`);
+            let totalVotesDisplay; // Declare this outside the if/else to be accessible later
+
+            if (!chartCard) { // If card section doesn't exist, create it and its canvas
+                chartCard = document.createElement('div');
+                chartCard.className = 'chart-card-item p-4 md:p-6'; 
+                chartCard.setAttribute('data-position', position); // Add data attribute to easily find it later
+                
+                const chartTitle = document.createElement('h3');
+                chartTitle.className = 'text-xl font-bold text-[#34495E] mb-4 text-center';
+                chartTitle.textContent = `Votos para ${position}`;
+                
+                totalVotesDisplay = document.createElement('div');
+                totalVotesDisplay.className = 'total-votes text-lg font-bold text-slate-700 text-center mb-4'; // Added styling
+                
+                chartCanvas = document.createElement('canvas');
+                chartCanvas.id = canvasId;
+                chartCanvas.className = 'h-full'; 
+
+                chartCard.appendChild(chartTitle);
+                chartCard.appendChild(totalVotesDisplay); // Append the total votes display
+                chartCard.appendChild(chartCanvas);
+                chartsContainer.appendChild(chartCard);
+            } else {
+                totalVotesDisplay = chartCard.querySelector('.total-votes');
+            }
+
+            const ctx = chartCanvas.getContext('2d');
+
+            const labels = Object.keys(data);
+            const votes = Object.values(data);
+            const totalVotes = votes.reduce((sum, count) => sum + count, 0); // Calculate total votes
+
+            // Update the total votes display
+            if (totalVotesDisplay) {
+                totalVotesDisplay.textContent = `Total de votos: ${totalVotes}`;
+            }
+
+            // If chart exists, update data and call update()
+            if (chartInstances[position]) {
+                chartInstances[position].data.labels = labels;
+                chartInstances[position].data.datasets[0].data = votes;
+                chartInstances[position].update(); // Update the existing chart
+            } else {
+                // If chart does not exist, create it
+                const backgroundColors = labels.map((_, i) => AJOBAPO_COLORS.chartBackgrounds[i % AJOBAPO_COLORS.chartBackgrounds.length]);
+                const borderColors = labels.map((_, i) => AJOBAPO_COLORS.chartBorders[i % AJOBAPO_COLORS.chartBorders.length]);
+
+                chartInstances[position] = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels.map(label => { // Wrap labels if too long
+                            const maxLength = 16;
+                            if (label.length > maxLength) {
+                                return label.match(new RegExp('.{1,' + maxLength + '}', 'g'));
+                            }
+                            return label;
+                        }),
+                        datasets: [{
+                            label: 'Votos',
+                            data: votes,
+                            backgroundColor: backgroundColors,
+                            borderColor: borderColors,
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false, // Ensure it fills available height
+                        animation: {
+                            duration: 1200, // Duración de la animación en milisegundos
+                            easing: 'easeInOutQuart', // Función de easing para una animación suave y natural
+                            y: { // Animación específica para el eje Y (crecimiento desde 0)
+                                from: 0
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    color: AJOBAPO_COLORS.darkText, // Text color for Y-axis
+                                    precision: 0 // Ensure whole numbers for vote count
+                                },
+                                grid: {
+                                    color: 'rgba(52, 73, 94, 0.1)' // Lighter grid lines
+                                }
+                            },
+                            x: {
+                                ticks: {
+                                    color: AJOBAPO_COLORS.darkText, // Text color for X-axis
+                                    font: {
+                                        size: 16 // Increased font size for X-axis labels to 16px
+                                    },
+                                    autoSkip: false // Prevent skipping labels
+                                },
+                                grid: {
+                                    display: false // Hide X-axis grid lines
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display: false // Hide legend as label is already in title
+                            },
+                            title: {
+                                display: false, // Title is handled by the H3 element above canvas
+                            }
+                        }
+                    }
+                });
+            }
+        };
+
+        // Function to fetch and render results
+        const fetchAndRenderResults = async () => {
+            if (!isAuthReady) {
+                console.warn("Authentication not ready. Cannot fetch results.");
+                return;
+            }
+
+            loader.classList.remove('hidden');
+            // No limpiar chartsContainer.innerHTML = ''; aquí para permitir actualizaciones suaves
+            try {
+                // Get all documents from the user_votes collection
+                const votesCollectionRef = collection(db, `artifacts/${FB_APP_ID}/public/data/user_votes`);
+                const querySnapshot = await getDocs(query(votesCollectionRef)); // Use query to get all documents
+
+                const aggregatedResults = {};
+
+                // Ensure all expected positions and their candidates are initialized to 0 votes
+                // This ensures all charts are created even if no votes
+                electionData.forEach(positionData => {
+                    aggregatedResults[positionData.position] = {};
+                    positionData.candidates.forEach(candidate => {
+                        aggregatedResults[positionData.position][candidate] = 0;
+                    });
+                });
+
+                querySnapshot.forEach((doc) => {
+                    const userData = doc.data();
+                    if (userData.completed && userData.votes) {
+                        for (const position in userData.votes) {
+                            const candidate = userData.votes[position];
+                            if (aggregatedResults[position] && aggregatedResults[position][candidate] !== undefined) {
+                                aggregatedResults[position][candidate]++;
+                            }
+                        }
+                    }
+                });
+
+                // Render charts for each expected position, even if no votes yet
+                // CRUCIAL: Do NOT skip if all votes are 0, just render an empty chart
+                electionData.forEach(positionData => {
+                    renderChart(positionData.position, aggregatedResults[positionData.position] || {});
+                });
+
+                // Handle the "No votes yet" message for the overall dashboard
+                const hasAnyVotes = Object.values(aggregatedResults).some(data =>
+                    Object.values(data).some(count => count > 0)
+                );
+                const noVotesMessageElement = chartsContainer.querySelector('p.text-center');
+
+                if (!hasAnyVotes && Object.keys(chartInstances).length === 0) { // Only show message if truly no votes and no charts created yet
+                    if (!noVotesMessageElement) { // Prevent duplicate message
+                        chartsContainer.innerHTML = '<p class="text-center text-slate-600 mt-4">Aún no hay votos registrados.</p>';
+                    }
+                } else if (hasAnyVotes && noVotesMessageElement) {
+                    // Remove "No votes yet" message if votes start coming in
+                    noVotesMessageElement.remove();
+                }
+
+            } catch (error) {
+                console.error("Error fetching or rendering results:", error);
+                // Solo mostrar mensaje de error si no hay gráficos existentes
+                if (Object.keys(chartInstances).length === 0) {
+                    chartsContainer.innerHTML = '<p class="text-red-600 text-center">Error al cargar los resultados. Intente refrescar.</p>';
+                }
+            } finally {
+                loader.classList.add('hidden');
+            }
+        };
+
+        // Firebase Initialization
+        const initFirebase = async () => {
+            loader.classList.remove('hidden');
+            try {
+                 if (typeof FB_CONFIG_DATA === 'undefined' || Object.keys(FB_CONFIG_DATA).length === 0) {
+                    console.warn("Firebase config not provided by Canvas. Using default configuration for local testing.");
+                    app = initializeApp({
+                        apiKey: "AIzaSyC-_hmFmOF86OjjKmgpaBqze0-zy6-boEg", // TU API KEY (De tu Firebase Project)
+                        authDomain: "votaciones-de-ajobapo.firebaseapp.com",
+                        projectId: "votaciones-de-ajobapo", // TU PROJECT ID (De tu Firebase Project)
+                        storageBucket: "votaciones-de-ajobapo.firebasestorage.app",
+                        messagingSenderId: "302058837199",
+                        appId: "1:302058837199:web:03c2d27947dc9e159093ba",
+                        measurementId: "G-4H0BFKG88E" // Optional: if you have Google Analytics for Firebase
+                    });
+                     FB_APP_ID = FB_CONFIG_DATA.projectId; // Ensure FB_APP_ID is set even for local
+                } else {
+                    app = initializeApp(FB_CONFIG_DATA);
+                }
+
+                db = getFirestore(app);
+                auth = getAuth(app);
+
+                // Sign in anonymously for reading data.
+                // Firestore rules require authentication even for public data.
+                // The onAuthStateChanged listener will handle the check and data fetch.
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        isAuthReady = true;
+                        // Use onSnapshot for real-time updates (more dynamic than a button click)
+                        const votesCollectionRef = collection(db, `artifacts/${FB_APP_ID}/public/data/user_votes`);
+                        onSnapshot(votesCollectionRef, (snapshot) => {
+                            // This callback fires on initial load and every subsequent change
+                            fetchAndRenderResults();
+                        }, (error) => {
+                            console.error("Error listening to real-time updates:", error);
+                            chartsContainer.innerHTML = '<p class="text-red-600 text-center">Error al escuchar actualizaciones en tiempo real.</p>';
+                            loader.classList.add('hidden');
+                        });
+                    } else {
+                        signInAnonymously(auth).catch(error => {
+                            console.error("Error signing in anonymously for results dashboard:", error);
+                            chartsContainer.innerHTML = '<p class="text-red-600 text-center">Error de autenticación para cargar resultados.</p>';
+                            loader.classList.add('hidden');
+                        });
+                    }
+                });
+
+            } catch (error) {
+                console.error("Error initializing Firebase:", error);
+                chartsContainer.innerHTML = '<p class="text-red-600 text-center">Error de inicialización de Firebase. Verifique su configuración.</p>';
+                loader.classList.add('hidden');
+            }
+        };
+
+        // Event Handlers
+        // refreshResultsBtn.addEventListener('click', fetchAndRenderResults); // This listener is no longer needed
+
+        // Initialize Firebase when the DOM is fully loaded
+        document.addEventListener('DOMContentLoaded', initFirebase);
+    </script>
+</body>
+</html>
