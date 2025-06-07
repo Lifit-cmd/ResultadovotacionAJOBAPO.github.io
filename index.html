@@ -19,7 +19,7 @@
         body {
             font-family: 'Inter', sans-serif;
             overflow-x: hidden; /* Prevent horizontal scroll due to diagonal elements */
-            padding: 0.5rem; /* Adjusted default padding for smaller screens */
+            padding: 0.25rem; /* Further Adjusted default padding for smaller screens */
         }
         .view {
             display: none;
@@ -96,7 +96,7 @@
         .main-app-content {
             background-color: white;
             border-radius: 1rem; /* Rounded corners */
-            padding: 0.5rem; /* Adjusted from 1rem to 0.5rem for tighter mobile fit */
+            padding: 0.25rem; /* Adjusted default padding for tighter mobile fit */
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); /* Soft shadow */
             border: 1px solid #e2e8f0; /* Subtle border */
             /* No max-height or overflow: hidden here, allows main content to expand */
@@ -141,13 +141,13 @@
     <!-- Optional Second Diagonal Layer for subtle depth -->
     <div class="diagonal-layer-2"></div>
 
-    <main id="app-container" class="w-full max-w-4xl mx-auto main-app-content"> <!-- Changed class here -->
+    <main id="app-container" class="w-full max-w-4xl mx-auto main-app-content">
         <div id="loader" class="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center rounded-2xl hidden z-10">
             <div class="loader"></div>
         </div>
 
         <div class="text-center mb-8">
-            <h1 class="text-4xl sm:text-5xl font-extrabold text-[#34495E] leading-tight">Panel de Resultados</h1>
+            <h1 class="text-3xl sm:text-4xl font-extrabold text-[#34495E] leading-tight">Panel de Resultados</h1>
             <p class="mt-4 text-lg text-slate-600">Visualización en tiempo real de los votos emitidos.</p>
         </div>
 
@@ -295,7 +295,16 @@
 
             const ctx = chartCanvas.getContext('2d');
 
-            const labels = Object.keys(data);
+            // Modified labels mapping to put surname below name
+            // CRUCIAL CHANGE: Return an array of strings for Chart.js to render as multi-line labels
+            const labels = Object.keys(data).map(label => {
+                const parts = label.split(' ');
+                if (parts.length > 1) {
+                    // Return an array [Name, Surname(s)] for multi-line display
+                    return [parts[0], parts.slice(1).join(' ')];
+                }
+                return label; // For single-word labels like "Voto en Blanco"
+            });
             const votes = Object.values(data);
             const totalVotes = votes.reduce((sum, count) => sum + count, 0); // Calculate total votes
 
@@ -317,13 +326,7 @@
                 chartInstances[position] = new Chart(ctx, {
                     type: 'bar',
                     data: {
-                        labels: labels.map(label => { // Wrap labels if too long
-                            const maxLength = 16;
-                            if (label.length > maxLength) {
-                                return label.match(new RegExp('.{1,' + maxLength + '}', 'g'));
-                            }
-                            return label;
-                        }),
+                        labels: labels, // Use the modified labels (now arrays for multi-line)
                         datasets: [{
                             label: 'Votos',
                             data: votes,
